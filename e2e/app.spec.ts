@@ -18,7 +18,7 @@ test('detects JSONL and shows table view with line numbers and errors', async ({
   await expect(page.getByText(/Line 2/)).toBeVisible()
 })
 
-test('pretty and minify actions rewrite source text', async ({ page }) => {
+test('pretty and minify actions rewrite simple json text', async ({ page }) => {
   await page.goto('/')
   const input = page.getByLabel('JSON input')
   await input.fill('{"a":1,"b":2}')
@@ -26,6 +26,46 @@ test('pretty and minify actions rewrite source text', async ({ page }) => {
   await expect(input).toHaveValue(/\n  "a": 1,/)
   await page.getByRole('button', { name: 'Minify' }).click()
   await expect(input).toHaveValue('{"a":1,"b":2}')
+})
+
+test('minify preserves nested json content and does not blank the editor', async ({ page }) => {
+  await page.goto('/')
+  const input = page.getByLabel('JSON input')
+  await input.fill(`{
+  "glossary": {
+    "title": "example glossary",
+    "GlossDiv": {
+      "title": "S",
+      "GlossList": {
+        "GlossEntry": {
+          "ID": "SGML",
+          "SortAs": "SGML",
+          "GlossTerm": "Standard Generalized Markup Language",
+          "Acronym": "SGML",
+          "Abbrev": "ISO 8879:1986",
+          "GlossDef": {
+            "para": "A meta-markup language, used to create markup languages such as DocBook.",
+            "GlossSeeAlso": ["GML", "XML"]
+          },
+          "GlossSee": "markup"
+        }
+      }
+    }
+  }
+}`)
+  await page.getByRole('button', { name: 'Minify' }).click()
+  await expect(input).not.toHaveValue('')
+  await expect(input).toHaveValue(/"GlossSeeAlso":\["GML","XML"\]/)
+  await expect(input).toHaveValue(/"GlossTerm":"Standard Generalized Markup Language"/)
+})
+
+test('minify preserves jsonl content and does not blank the editor', async ({ page }) => {
+  await page.goto('/')
+  const input = page.getByLabel('JSON input')
+  await input.fill('{"id":1,"name":"Ada"}\n{"id":2,"name":"Linus"}')
+  await page.getByRole('button', { name: 'Minify' }).click()
+  await expect(input).not.toHaveValue('')
+  await expect(input).toHaveValue('{"id":1,"name":"Ada"}\n{"id":2,"name":"Linus"}')
 })
 
 test('supports file upload', async ({ page }) => {

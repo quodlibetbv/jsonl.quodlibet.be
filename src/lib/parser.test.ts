@@ -38,4 +38,26 @@ describe('parseInput', () => {
     expect(result.issues).toHaveLength(1)
     expect(result.issues[0]).toMatchObject({ line: 2 })
   })
+
+  it('does not auto-detect broken multiline json as jsonl because one line is valid', () => {
+    const broken = `{
+  "glossary": {
+    "GlossSeeAlso": [
+      "GML",
+      "XML"
+    ]
+  }
+`
+    const result = parseInput(broken)
+    expect(result.format).toBe('unknown')
+    expect(result.jsonlRows).toHaveLength(0)
+    expect(result.issues.length).toBeGreaterThan(0)
+  })
+
+  it('auto-detects mostly-valid object jsonl with one bad line as jsonl', () => {
+    const result = parseInput('{"id":1,"name":"Ada"}\nnot json\n{"id":2,"name":"Linus"}')
+    expect(result.format).toBe('jsonl')
+    expect(result.jsonlRows).toHaveLength(2)
+    expect(result.issues).toHaveLength(1)
+  })
 })

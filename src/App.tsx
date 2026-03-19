@@ -136,24 +136,28 @@ function App() {
     updateSource(text, file.name)
   }
 
-  function handlePrettyPrint() {
+  function applyTransform(kind: 'pretty' | 'minify') {
+    let nextText: string | null = null
+
     if (parsed.format === 'json' && parsed.jsonValue !== undefined) {
-      setSourceText(prettyPrintJson(parsed.jsonValue))
+      nextText = kind === 'pretty' ? prettyPrintJson(parsed.jsonValue) : minifyJson(parsed.jsonValue)
+    } else if (parsed.format === 'jsonl' && parsed.jsonlRows.length > 0) {
+      nextText = stringifyJsonl(parsed.jsonlRows.map((row) => row.value))
+    }
+
+    if (nextText === null || nextText.length === 0) {
       return
     }
-    if (parsed.format === 'jsonl') {
-      setSourceText(stringifyJsonl(parsed.jsonlRows.map((row) => row.value)))
-    }
+
+    setSourceText(nextText)
+  }
+
+  function handlePrettyPrint() {
+    applyTransform('pretty')
   }
 
   function handleMinify() {
-    if (parsed.format === 'json' && parsed.jsonValue !== undefined) {
-      setSourceText(minifyJson(parsed.jsonValue))
-      return
-    }
-    if (parsed.format === 'jsonl') {
-      setSourceText(stringifyJsonl(parsed.jsonlRows.map((row) => row.value)))
-    }
+    applyTransform('minify')
   }
 
   async function handleCopy(text: string) {

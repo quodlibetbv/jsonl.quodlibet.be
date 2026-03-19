@@ -68,6 +68,26 @@ test('minify preserves jsonl content and does not blank the editor', async ({ pa
   await expect(input).toHaveValue('{"id":1,"name":"Ada"}\n{"id":2,"name":"Linus"}')
 })
 
+test('minify is a no-op for jsonl content when mode is forced to json', async ({ page }) => {
+  await page.goto('/')
+  const input = page.getByLabel('JSON input')
+  const original = '{"id":1,"name":"Ada"}\n{"id":2,"name":"Linus"}'
+  await input.fill(original)
+  await page.locator('section.panel select').selectOption('json')
+  await page.getByRole('button', { name: 'Minify' }).click()
+  await expect(input).toHaveValue(original)
+})
+
+test('pretty is a no-op for broken json input', async ({ page }) => {
+  await page.goto('/')
+  const input = page.getByLabel('JSON input')
+  const original = '{\n  "a": 1,\n'
+  await input.fill(original)
+  await page.locator('section.panel select').selectOption('json')
+  await page.getByRole('button', { name: 'Pretty' }).click()
+  await expect(input).toHaveValue(original)
+})
+
 test('supports file upload', async ({ page }) => {
   await page.goto('/')
   await page.locator('input[type="file"]').setInputFiles({

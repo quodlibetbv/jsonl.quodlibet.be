@@ -1,4 +1,4 @@
-name: Deploy via SFTP (SSH key)
+name: Deploy via FTP (manual)
 
 on:
   workflow_dispatch:
@@ -25,13 +25,12 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Write SSH key
-        run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.SFTP_SSH_KEY }}" > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
-          ssh-keyscan -p "${{ secrets.SFTP_PORT }}" "${{ secrets.SFTP_HOST }}" >> ~/.ssh/known_hosts
-
-      - name: Upload dist with rsync over SSH
-        run: |
-          rsync -avz --delete -e "ssh -p ${{ secrets.SFTP_PORT }}" dist/ "${{ secrets.SFTP_USERNAME }}@${{ secrets.SFTP_HOST }}:${{ secrets.SFTP_REMOTE_PATH }}/"
+      - name: Deploy dist over FTP
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.SFTP_HOST }}
+          username: ${{ secrets.SFTP_USERNAME }}
+          password: ${{ secrets.SFTP_PASSWORD }}
+          port: ${{ secrets.SFTP_PORT }}
+          local-dir: ./dist/
+          server-dir: ${{ secrets.SFTP_REMOTE_PATH }}/

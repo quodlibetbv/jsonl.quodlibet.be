@@ -1,4 +1,4 @@
-name: Deploy via SFTP
+name: Deploy via FTP
 
 on:
   workflow_dispatch:
@@ -27,14 +27,12 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Deploy dist over SFTP
-        uses: Dylan700/sftp-upload-action@latest
+      - name: Deploy dist over FTP
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
           server: ${{ secrets.SFTP_HOST }}
-          port: ${{ secrets.SFTP_PORT }}
           username: ${{ secrets.SFTP_USERNAME }}
           password: ${{ secrets.SFTP_PASSWORD }}
-          uploads: |
-            ./dist/ => ${{ secrets.SFTP_REMOTE_PATH }}/
-        env:
-          FORCE_COLOR: 1
+          port: ${{ secrets.SFTP_PORT }}
+          local-dir: ./dist/
+          server-dir: ${{ secrets.SFTP_REMOTE_PATH }}/

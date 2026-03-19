@@ -63,19 +63,19 @@ Included workflows:
   - runs Playwright browser tests
   - builds production output
 - `.github/workflows/deploy-sftp.yml`
-  - builds and deploys `dist/` over SFTP using password auth
+  - builds and deploys `dist/` over FTP using the existing `SFTP_*` secret names
 - `.github/workflows/deploy-sftp-key.yml`
-  - builds and deploys `dist/` using SSH key + rsync
+  - manual FTP deploy workflow using the same existing `SFTP_*` secret names
 
 Expected GitHub Secrets:
 
 - `SFTP_HOST`
 - `SFTP_PORT`
 - `SFTP_USERNAME`
-- `SFTP_PASSWORD` or `SFTP_SSH_KEY`
+- `SFTP_PASSWORD`
 - `SFTP_REMOTE_PATH`
 
-Use one deploy workflow style, not both.
+The secret names are intentionally left as `SFTP_*` for compatibility, even though the workflow now deploys over plain FTP.
 
 ## Notes
 

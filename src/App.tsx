@@ -403,7 +403,7 @@ function App() {
           <img src={logoUrl} alt="Quodlibet logo" className="brand-logo" />
           <div>
             <h1>Quodlibet JSON(L) Viewer</h1>
-            <p className="eyebrow">Table-first local inspection</p>
+            <p className="eyebrow">Built for messy payloads</p>
           </div>
         </div>
         <div className="toolbar">

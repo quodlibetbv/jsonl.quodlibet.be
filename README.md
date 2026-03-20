@@ -1,6 +1,6 @@
 # Quodlibet JSON(L) Viewer
 
-Table-first local inspection for JSON and JSONL.
+Built for messy payloads.
 
 ## Features
 

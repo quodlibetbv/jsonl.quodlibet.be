@@ -22,8 +22,8 @@ describe('describeValueShape', () => {
 })
 
 describe('getRecommendedView', () => {
-  it('prefers tree for parsed json objects', () => {
-    expect(getRecommendedView(parsed({ format: 'json', sourceText: '{"a":1}', jsonValue: { a: 1 } }), 1)).toBe('tree')
+  it('prefers table for parsed json objects when rows are available', () => {
+    expect(getRecommendedView(parsed({ format: 'json', sourceText: '{"a":1}', jsonValue: { a: 1 } }), 1)).toBe('table')
   })
 
   it('prefers table for top-level json arrays', () => {
@@ -51,6 +51,12 @@ describe('getRecommendedView', () => {
 })
 
 describe('getRecommendedViewReason', () => {
+  it('explains why table is recommended for flattened json objects', () => {
+    expect(
+      getRecommendedViewReason(parsed({ format: 'json', sourceText: '{"a":1}', jsonValue: { a: 1 } }), 1),
+    ).toMatch(/table first/i)
+  })
+
   it('explains why table is recommended for jsonl', () => {
     expect(
       getRecommendedViewReason(parsed({ format: 'jsonl', sourceText: '{"a":1}', jsonlRows: [{ line: 1, value: { a: 1 } }] }), 1),

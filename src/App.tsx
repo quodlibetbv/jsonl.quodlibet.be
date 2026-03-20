@@ -25,6 +25,7 @@ import { describeValueShape, getRecommendedView, getRecommendedViewReason } from
 
 type ManualFormat = DetectedFormat | 'auto'
 type StatusTone = 'idle' | 'ready' | 'warning' | 'error'
+type DrawerPanel = 'help' | 'source' | 'raw' | 'tree' | 'errors' | null
 
 const JSON_SAMPLE = `{
   "user": {
@@ -44,10 +45,6 @@ const JSONL_SAMPLE = `{"id":1,"name":"Ada","team":"research","score":98,"latency
 const BROKEN_JSONL_SAMPLE = `{"id":1,"name":"Ada"}
 not json at all
 {"id":2,"name":"Linus"}`
-
-function formatCount(count: number, singular: string, plural = `${singular}s`): string {
-  return `${count} ${count === 1 ? singular : plural}`
-}
 
 function quoteIfNeeded(value: string): string {
   return /\s/.test(value) ? JSON.stringify(value) : value
@@ -73,16 +70,6 @@ function legacyQueryFromState(saved: PersistedState): string {
 function sortAria(sort: TableSortState | null, column: string): 'ascending' | 'descending' | 'none' {
   if (!sort || sort.column !== column) return 'none'
   return sort.direction === 'asc' ? 'ascending' : 'descending'
-}
-
-function semanticPillLabel(kind: ValueSemantic | 'complex'): string {
-  if (kind === 'empty') return 'empty string'
-  if (kind === 'complex') return 'nested values'
-  return kind
-}
-
-function semanticQueryValue(kind: ValueSemantic | 'complex'): string {
-  return kind
 }
 
 function summarizeColumnSignal(signal: ColumnSignal): string[] {
@@ -126,7 +113,7 @@ function JsonTree({ value, name = 'root', depth = 0 }: { value: unknown; name?: 
 
   return (
     <div className="tree-group" style={{ marginLeft: depth * 16 }}>
-      <button className="ghost inline" onClick={() => setCollapsed((current) => !current)}>
+      <button className="ghost-inline" onClick={() => setCollapsed((current) => !current)}>
         {collapsed ? '▸' : '▾'} {name}{' '}
         <span className="muted">{isArray ? `[${entries.length}]` : `{${entries.length}}`}</span>
       </button>
@@ -145,12 +132,9 @@ function EmptyState({ onLoadSample }: { onLoadSample: (sample: 'json' | 'jsonl' 
   return (
     <div className="empty-state">
       <div className="empty-state-copy">
-        <p className="empty-kicker">Import to first signal</p>
-        <h3>Paste a payload or drop a file to start.</h3>
-        <p>
-          Quodlibet opens in investigator mode: recover rows fast, surface suspicious fields, and keep raw payload,
-          table, tree, and parse failures in sync.
-        </p>
+        <p className="empty-kicker">Start with a payload</p>
+        <h3>Paste JSON or JSONL to inspect it.</h3>
+        <p>Load a sample, paste into the source drawer, or drop a file there. The loaded state stays table-first.</p>
       </div>
       <div className="sample-actions">
         <button onClick={() => onLoadSample('json')}>Load JSON sample</button>
@@ -183,14 +167,6 @@ function ActiveChip({ chip, onRemove }: { chip: TableQueryChip; onRemove: (chip:
     >
       <span>{chip.label}</span>
       <span aria-hidden="true">×</span>
-    </button>
-  )
-}
-
-function ShortcutButton({ label, onClick, tone = 'default' }: { label: string; onClick: () => void; tone?: 'default' | 'warning' }) {
-  return (
-    <button type="button" className={`shortcut-button tone-${tone}`} onClick={onClick}>
-      {label}
     </button>
   )
 }
@@ -268,7 +244,7 @@ function SignalList({
       <h4>{title}</h4>
       <div className="inspector-chip-list">
         {columns.map((column) => (
-          <button key={`${title}-${column}`} type="button" className="inspector-chip" onClick={() => onFilter(`${column}=${semanticQueryValue(kind)}`)}>
+          <button key={`${title}-${column}`} type="button" className="inspector-chip" onClick={() => onFilter(`${column}=${kind}`)}>
             {column}
           </button>
         ))}
@@ -280,36 +256,34 @@ function SignalList({
 function RowInspector({
   row,
   rowSignal,
+  onClose,
   onCopy,
   onFilter,
 }: {
-  row: TableRow | null
+  row: TableRow
   rowSignal: RowSignal | null
+  onClose: () => void
   onCopy: (text: string) => void
   onFilter: (query: string) => void
 }) {
-  if (!row || !rowSignal) {
-    return (
-      <aside className="row-inspector empty">
-        <h3>Row inspection</h3>
-        <p className="muted">Click a row to pin its raw payload and suspicious fields here.</p>
-      </aside>
-    )
-  }
-
-  const labels = rowSignalLabel(rowSignal)
+  const labels = rowSignal ? rowSignalLabel(rowSignal) : []
   const headline = row._line ? `Line ${row._line}` : 'Selected row'
 
   return (
-    <aside className="row-inspector">
+    <aside className="row-inspector" aria-label="Row detail">
       <div className="row-inspector-header">
         <div>
-          <p className="inspector-kicker">Forensic row view</p>
+          <p className="inspector-kicker">On-demand detail</p>
           <h3>{headline}</h3>
         </div>
-        <button type="button" onClick={() => onCopy(JSON.stringify(row.__raw, null, 2))}>
-          Copy row JSON
-        </button>
+        <div className="drawer-actions">
+          <button type="button" onClick={() => onCopy(JSON.stringify(row.__raw, null, 2))}>
+            Copy row JSON
+          </button>
+          <button type="button" className="quiet-button" onClick={onClose}>
+            Close
+          </button>
+        </div>
       </div>
 
       {labels.length > 0 ? (
@@ -324,17 +298,61 @@ function RowInspector({
         <p className="muted">No obvious row-level anomalies in the visible columns.</p>
       )}
 
-      <SignalList title="Missing fields" columns={rowSignal.missingColumns} kind="missing" onFilter={onFilter} />
-      <SignalList title="Null fields" columns={rowSignal.nullColumns} kind="null" onFilter={onFilter} />
-      <SignalList title="Empty strings" columns={rowSignal.emptyColumns} kind="empty" onFilter={onFilter} />
-      <SignalList title="Object fields" columns={rowSignal.objectColumns} kind="object" onFilter={onFilter} />
-      <SignalList title="Array fields" columns={rowSignal.arrayColumns} kind="array" onFilter={onFilter} />
+      {rowSignal && (
+        <>
+          <SignalList title="Missing fields" columns={rowSignal.missingColumns} kind="missing" onFilter={onFilter} />
+          <SignalList title="Null fields" columns={rowSignal.nullColumns} kind="null" onFilter={onFilter} />
+          <SignalList title="Empty strings" columns={rowSignal.emptyColumns} kind="empty" onFilter={onFilter} />
+          <SignalList title="Object fields" columns={rowSignal.objectColumns} kind="object" onFilter={onFilter} />
+          <SignalList title="Array fields" columns={rowSignal.arrayColumns} kind="array" onFilter={onFilter} />
+        </>
+      )}
 
       <section className="inspector-section">
         <h4>Raw payload</h4>
         <pre>{JSON.stringify(row.__raw, null, 2)}</pre>
       </section>
     </aside>
+  )
+}
+
+function CommandHelp() {
+  return (
+    <div className="help-grid" aria-label="Command bar help">
+      <section className="help-card">
+        <h3>Filters</h3>
+        <p>Free text searches every visible column. Structured filters stay live as you type.</p>
+        <pre>{`ada
+status:error
+score>=90
+has:missing
+payload=object
+sort:-_line`}</pre>
+      </section>
+      <section className="help-card">
+        <h3>Commands</h3>
+        <p>Type a slash command in the same bar, then press Enter.</p>
+        <pre>{`/source
+/raw
+/tree
+/errors
+/reset
+/pretty
+/minify
+/download
+/theme dark`}</pre>
+      </section>
+      <section className="help-card">
+        <h3>Hidden extras</h3>
+        <p>Use commands to keep the surface quiet while preserving the old power.</p>
+        <pre>{`/mode jsonl
+/skip invalid off
+/sample jsonl
+/expand
+/copy rows
+/clear`}</pre>
+      </section>
+    </div>
   )
 }
 
@@ -348,12 +366,15 @@ function App() {
   const [skipInvalidJsonl, setSkipInvalidJsonl] = useState(true)
   const [tableExpanded, setTableExpanded] = useState(false)
   const [tableQuery, setTableQuery] = useState('')
-  const [tableSort, setTableSort] = useState<TableSortState | null>(null)
+  const [commandBarValue, setCommandBarValue] = useState('')
   const [restored, setRestored] = useState(false)
   const [hydrated, setHydrated] = useState(false)
   const [autoView, setAutoView] = useState(true)
-  const [sourcePanelOpen, setSourcePanelOpen] = useState(true)
+  const [drawerPanel, setDrawerPanel] = useState<DrawerPanel>('source')
   const [selectedRow, setSelectedRow] = useState<TableRow | null>(null)
+  const [statusFlash, setStatusFlash] = useState<string | null>(null)
+
+  const [tableSort, setTableSort] = useState<TableSortState | null>(null)
 
   const parsed = useMemo(
     () => parseInput(sourceText, { manualFormat, filename, skipInvalidJsonl }),
@@ -379,17 +400,20 @@ function App() {
   useEffect(() => {
     void loadState().then((saved) => {
       if (saved) {
+        const savedQuery = legacyQueryFromState(saved)
         setSourceText(saved.sourceText)
+        setFilename(undefined)
         setManualFormat(saved.manualFormat)
         setActiveView(saved.activeView)
         setTheme(saved.theme)
         setSkipInvalidJsonl(saved.skipInvalidJsonl)
         setTableExpanded(saved.tableExpanded ?? false)
-        setTableQuery(legacyQueryFromState(saved))
+        setTableQuery(savedQuery)
+        setCommandBarValue(savedQuery)
         setTableSort(saved.tableSort ?? null)
         setRestored(Boolean(saved.sourceText))
         setAutoView(false)
-        setSourcePanelOpen(!saved.sourceText)
+        setDrawerPanel(saved.sourceText ? null : 'source')
       }
       setHydrated(true)
     })
@@ -420,6 +444,12 @@ function App() {
     document.documentElement.dataset.theme = effectiveTheme
   }, [theme])
 
+  useEffect(() => {
+    if (!statusFlash) return
+    const timeout = window.setTimeout(() => setStatusFlash(null), 3200)
+    return () => window.clearTimeout(timeout)
+  }, [statusFlash])
+
   const hasSource = sourceText.trim().length > 0
   const sourceLines = sourceText ? sourceText.split(/\r?\n/).length : 0
   const formatBadge = parsed.format === 'unknown' ? 'Unknown' : parsed.format.toUpperCase()
@@ -441,24 +471,11 @@ function App() {
       : visibleIssues.length > 0
         ? 'warning'
         : 'ready'
-  const statusTitle = !hasSource
-    ? 'Waiting for input'
-    : parseTone === 'ready'
-      ? 'Ready to inspect'
-      : parseTone === 'warning'
-        ? 'Recovered with warnings'
-        : 'Needs attention'
-  const statusMessage = !hasSource
-    ? 'Paste JSON or JSONL, or drop a file to let the viewer pick the fastest path to something useful.'
-    : parseTone === 'ready'
-      ? `${formatBadge} detected. ${recommendedViewReason}`
-      : parseTone === 'warning'
-        ? `${formatBadge} detected with ${formatCount(visibleIssues.length, 'issue')}. ${recommendedViewReason}`
-        : visibleIssues[0]?.message ?? 'The payload does not parse cleanly yet.'
 
   useEffect(() => {
     if (!hasSource) {
       setActiveView('raw')
+      setSelectedRow(null)
       return
     }
 
@@ -467,36 +484,45 @@ function App() {
       (activeView === 'table' && !canShowTable) ||
       (activeView === 'errors' && visibleIssues.length === 0 && recommendedView !== 'errors')
 
-    if (autoView || activeViewUnavailable || activeView === 'raw') {
+    if (autoView || activeViewUnavailable) {
       setActiveView(recommendedView)
     }
   }, [activeView, autoView, canShowTable, canShowTree, hasSource, recommendedView, visibleIssues.length])
 
   useEffect(() => {
-    if (activeView !== 'table' || !canShowTable || filteredTableData.rows.length === 0) {
+    if (!canShowTable || filteredTableData.rows.length === 0) {
       setSelectedRow(null)
       return
     }
 
-    if (!selectedRow || !filteredTableData.rows.includes(selectedRow)) {
-      setSelectedRow(filteredTableData.rows[0])
+    if (selectedRow && !filteredTableData.rows.includes(selectedRow)) {
+      setSelectedRow(null)
     }
-  }, [activeView, canShowTable, filteredTableData.rows, selectedRow])
+  }, [canShowTable, filteredTableData.rows, selectedRow])
 
-  function updateSource(next: string, nextFilename?: string, options?: { collapseSource?: boolean }) {
+  function syncQuery(next: string) {
+    setTableQuery(next)
+    setCommandBarValue(next)
+  }
+
+  function updateSource(next: string, nextFilename?: string, options?: { closeSource?: boolean }) {
     setSourceText(next)
     setFilename(nextFilename)
     setRestored(false)
     setAutoView(true)
     setSelectedRow(null)
-    if (options?.collapseSource) {
-      setSourcePanelOpen(next.trim().length === 0)
+    setStatusFlash(null)
+    if (options?.closeSource && next.trim().length > 0) {
+      setDrawerPanel(null)
+    }
+    if (next.trim().length === 0) {
+      setDrawerPanel('source')
     }
   }
 
   async function handleFile(file: File) {
     const text = await file.text()
-    updateSource(text, file.name, { collapseSource: true })
+    updateSource(text, file.name, { closeSource: true })
   }
 
   function applyTransform(kind: 'pretty' | 'minify') {
@@ -509,22 +535,18 @@ function App() {
     }
 
     if (nextText === null || nextText.length === 0) {
-      return
+      setStatusFlash(`Nothing to ${kind}.`)
+      return false
     }
 
     updateSource(nextText, filename)
+    setStatusFlash(kind === 'pretty' ? 'Formatted source.' : 'Minified source.')
+    return true
   }
 
-  function handlePrettyPrint() {
-    applyTransform('pretty')
-  }
-
-  function handleMinify() {
-    applyTransform('minify')
-  }
-
-  async function handleCopy(text: string) {
+  async function handleCopy(text: string, label = 'Copied to clipboard.') {
     await navigator.clipboard.writeText(text)
+    setStatusFlash(label)
   }
 
   function handleDownload() {
@@ -535,6 +557,7 @@ function App() {
     link.download = filename ?? (parsed.format === 'jsonl' ? 'data.jsonl' : 'data.json')
     link.click()
     URL.revokeObjectURL(url)
+    setStatusFlash('Downloaded current source.')
   }
 
   async function handleClear() {
@@ -544,163 +567,332 @@ function App() {
     setActiveView('raw')
     setTableExpanded(false)
     setTableQuery('')
+    setCommandBarValue('')
     setTableSort(null)
     setRestored(false)
     setAutoView(true)
-    setSourcePanelOpen(true)
+    setDrawerPanel('source')
     setSelectedRow(null)
+    setStatusFlash('Cleared payload and local state.')
     await clearState()
   }
 
   function resetTableControls() {
-    setTableQuery('')
     setTableSort(null)
-  }
-
-  function handleViewClick(view: ViewMode) {
-    setActiveView(view)
-    setAutoView(false)
+    syncQuery('')
+    setStatusFlash('Cleared filters and sort.')
   }
 
   function loadSample(sample: 'json' | 'jsonl' | 'broken-jsonl') {
     if (sample === 'json') {
-      updateSource(JSON_SAMPLE, 'sample.json', { collapseSource: true })
+      updateSource(JSON_SAMPLE, 'sample.json', { closeSource: true })
+      setStatusFlash('Loaded JSON sample.')
       return
     }
 
     if (sample === 'jsonl') {
-      updateSource(JSONL_SAMPLE, 'sample.jsonl', { collapseSource: true })
+      updateSource(JSONL_SAMPLE, 'sample.jsonl', { closeSource: true })
+      setStatusFlash('Loaded JSONL sample.')
       return
     }
 
-    updateSource(BROKEN_JSONL_SAMPLE, 'broken.jsonl', { collapseSource: true })
+    updateSource(BROKEN_JSONL_SAMPLE, 'broken.jsonl', { closeSource: true })
+    setStatusFlash('Loaded broken JSONL sample.')
   }
 
   function handleRemoveChip(chip: TableQueryChip) {
     if (chip.source === 'state') {
       setTableSort(null)
+      setStatusFlash('Cleared sort.')
       return
     }
 
     if (chip.tokenIndex === undefined) return
-    const tokenIndex = chip.tokenIndex
-    setTableQuery((current) => removeQueryToken(current, tokenIndex))
+    const next = removeQueryToken(tableQuery, chip.tokenIndex)
+    syncQuery(next)
   }
 
   function handleSortClick(column: string) {
+    setCommandBarValue((current) => (current.trimStart().startsWith('/') ? current : stripSortTokens(current)))
     setTableQuery((current) => (filteredTableData.sortSource === 'query' ? stripSortTokens(current) : current))
     setTableSort(toggleSortState(filteredTableData.sort, column))
+    setStatusFlash(`Sorted by ${column}${filteredTableData.sort?.column === column && filteredTableData.sort?.direction === 'asc' ? ' descending' : ' ascending'}.`)
   }
 
   function applyInvestigationQuery(nextQuery: string, mode: 'replace' | 'append' = 'replace') {
     setActiveView('table')
     setAutoView(false)
-    setTableQuery((current) => (mode === 'append' ? appendToken(current, nextQuery) : nextQuery))
+    setDrawerPanel(null)
+
+    const next = mode === 'append' ? appendToken(tableQuery, nextQuery) : nextQuery
+    syncQuery(next)
   }
 
-  const activeFilterCount = filteredTableData.chips.filter((chip) => chip.kind !== 'sort').length
-  const columnShortcutSignals = investigation.sparseColumns.slice(0, 3)
-  const mixedShortcutSignals = investigation.mixedColumns
-    .flatMap((signal) => signal.minorityKinds.map((kind) => ({ signal, kind })))
-    .slice(0, 3)
+  function handleCommandInput(next: string) {
+    setCommandBarValue(next)
+    if (!next.trimStart().startsWith('/')) {
+      setTableQuery(next)
+    }
+  }
+
+  function showSecondaryView(view: 'raw' | 'tree' | 'errors') {
+    if (view === 'tree' && !canShowTree) {
+      setStatusFlash('Tree view is not available for this payload.')
+      return
+    }
+
+    if (view === 'errors' && visibleIssues.length === 0) {
+      setStatusFlash('No parse issues to show.')
+      return
+    }
+
+    if (canShowTable) {
+      setDrawerPanel(view)
+      return
+    }
+
+    setActiveView(view)
+    setAutoView(false)
+  }
+
+  async function runCommand() {
+    const raw = commandBarValue.trim()
+    if (!raw.startsWith('/')) return
+
+    const [command, ...rest] = raw.slice(1).trim().split(/\s+/)
+    const lowerCommand = command?.toLowerCase() ?? ''
+    const firstArg = rest[0]?.toLowerCase()
+    const secondArg = rest[1]?.toLowerCase()
+    let nextBarValue = tableQuery
+
+    switch (lowerCommand) {
+      case 'help':
+        setDrawerPanel('help')
+        setStatusFlash('Opened command help.')
+        break
+      case 'source': {
+        const nextPanel = drawerPanel === 'source' ? null : 'source'
+        setDrawerPanel(nextPanel)
+        setStatusFlash(nextPanel === 'source' ? 'Opened source drawer.' : 'Closed source drawer.')
+        break
+      }
+      case 'raw':
+        showSecondaryView('raw')
+        break
+      case 'tree':
+        showSecondaryView('tree')
+        break
+      case 'errors':
+        showSecondaryView('errors')
+        break
+      case 'table':
+        setDrawerPanel(null)
+        setActiveView('table')
+        setAutoView(false)
+        setStatusFlash('Back to the table.')
+        break
+      case 'pretty':
+        applyTransform('pretty')
+        break
+      case 'minify':
+        applyTransform('minify')
+        break
+      case 'download':
+        handleDownload()
+        break
+      case 'clear':
+        await handleClear()
+        nextBarValue = ''
+        break
+      case 'reset':
+        resetTableControls()
+        nextBarValue = ''
+        break
+      case 'expand':
+        setTableExpanded(true)
+        setStatusFlash('Expanded table width.')
+        break
+      case 'collapse':
+        setTableExpanded(false)
+        setStatusFlash('Returned to normal width.')
+        break
+      case 'copy':
+        if (firstArg === 'rows') {
+          await handleCopy(JSON.stringify(filteredTableData.rows.map((row) => row.__raw), null, 2), 'Copied filtered rows.')
+        } else if (firstArg === 'source') {
+          await handleCopy(sourceText, 'Copied source.')
+        } else if (firstArg === 'row' && selectedRow) {
+          await handleCopy(JSON.stringify(selectedRow.__raw, null, 2), 'Copied selected row.')
+        } else {
+          setStatusFlash('Try /copy rows, /copy source, or /copy row.')
+        }
+        break
+      case 'theme':
+        if (firstArg === 'light' || firstArg === 'dark' || firstArg === 'system') {
+          setTheme(firstArg)
+          setStatusFlash(`Theme set to ${firstArg}.`)
+        } else {
+          setStatusFlash('Try /theme system, /theme light, or /theme dark.')
+        }
+        break
+      case 'mode':
+        if (firstArg === 'auto' || firstArg === 'json' || firstArg === 'jsonl') {
+          setManualFormat(firstArg)
+          setAutoView(true)
+          setStatusFlash(`Mode set to ${firstArg}.`)
+        } else {
+          setStatusFlash('Try /mode auto, /mode json, or /mode jsonl.')
+        }
+        break
+      case 'skip': {
+        const decision = firstArg === 'invalid' ? secondArg : firstArg
+        if (decision === 'on' || decision === 'off') {
+          setSkipInvalidJsonl(decision === 'on')
+          setAutoView(true)
+          setStatusFlash(`Ignore invalid JSONL lines ${decision === 'on' ? 'enabled' : 'disabled'}.`)
+        } else {
+          setStatusFlash('Try /skip invalid on or /skip invalid off.')
+        }
+        break
+      }
+      case 'sample':
+        if (firstArg === 'json') loadSample('json')
+        else if (firstArg === 'jsonl') loadSample('jsonl')
+        else if (firstArg === 'broken' || firstArg === 'broken-jsonl') loadSample('broken-jsonl')
+        else setStatusFlash('Try /sample json, /sample jsonl, or /sample broken-jsonl.')
+        nextBarValue = tableQuery
+        break
+      case 'close':
+        setDrawerPanel(null)
+        setSelectedRow(null)
+        setStatusFlash('Closed open drawers.')
+        break
+      default:
+        setStatusFlash('Unknown command. Try /help.')
+        break
+    }
+
+    setCommandBarValue(nextBarValue)
+  }
+
   const selectedRowSignal = selectedRow ? investigation.rowSignalMap.get(selectedRow) ?? null : null
-  const tableFirst = canShowTable
-  const tabs: ViewMode[] = tableFirst ? ['table', 'raw', 'tree', 'errors'] : ['raw', 'tree', 'table', 'errors']
+  const activeCommand = commandBarValue.trimStart().startsWith('/')
+  const showSourceDrawer = !hasSource || drawerPanel === 'source'
+  const showAuxDrawer = drawerPanel === 'help' || (canShowTable && drawerPanel !== null && drawerPanel !== 'source')
+  const mainView: ViewMode = canShowTable ? 'table' : activeView
+  const visibleDataColumns = Math.max(tableData.columns.length - (tableData.columns.includes('_line') ? 1 : 0), 0)
+
+  const statusSummary = !hasSource
+    ? 'No payload loaded.'
+    : canShowTable
+      ? `${filteredTableData.visibleRows}/${filteredTableData.totalRows} rows · ${visibleDataColumns} cols · ${visibleIssues.length} issue${visibleIssues.length === 1 ? '' : 's'} · ${formatBadge}`
+      : `${formatBadge} · ${recommendedViewReason}`
+
+  const statusSecondary = activeCommand
+    ? `Press Enter to run ${commandBarValue.trim()}`
+    : statusFlash ?? (!hasSource ? 'Use /sample jsonl or open the source drawer.' : 'Type /help to surface hidden tools.')
 
   return (
     <div className={`app-shell${tableExpanded ? ' table-expanded' : ''}${hasSource ? ' has-source' : ' is-empty'}`}>
-      <header className="topbar compact-topbar">
-        <div className="brand-row compact-brand">
+      <header className="topbar">
+        <div className="brand-row">
           <img src={logoUrl} alt="Quodlibet logo" className="brand-logo" />
           <div>
             <h1>Quodlibet JSON(L) Viewer</h1>
             <p className="eyebrow">Built for messy payloads</p>
           </div>
         </div>
-        <div className="toolbar">
-          <span className={`badge badge-${parsed.format}`}>{formatBadge}</span>
-          <select aria-label="Theme" value={theme} onChange={(event) => setTheme(event.target.value as ThemeMode)}>
-            <option value="system">Theme: System</option>
-            <option value="light">Theme: Light</option>
-            <option value="dark">Theme: Dark</option>
-          </select>
-          <button onClick={() => fileInputRef.current?.click()}>Upload</button>
-          <button onClick={handlePrettyPrint} disabled={!hasSource}>Pretty</button>
-          <button onClick={handleMinify} disabled={!hasSource}>Minify</button>
-          <button onClick={handleDownload} disabled={!hasSource}>Download</button>
-          <button className="danger" onClick={() => void handleClear()} disabled={!hasSource}>Clear</button>
-          <input
-            ref={fileInputRef}
-            hidden
-            type="file"
-            accept=".json,.jsonl,.ndjson,.txt,application/json,text/plain"
-            onChange={(event) => {
-              const file = event.target.files?.[0]
-              if (file) void handleFile(file)
-            }}
-          />
-        </div>
+        <input
+          ref={fileInputRef}
+          hidden
+          type="file"
+          accept=".json,.jsonl,.ndjson,.txt,application/json,text/plain"
+          onChange={(event) => {
+            const file = event.target.files?.[0]
+            if (file) void handleFile(file)
+          }}
+        />
       </header>
 
-      <section className={`status-strip compact-strip tone-${parseTone}${hasSource ? ' loaded' : ''}`}>
-        <div className="status-inline-copy">
-          <span className="status-inline-title">{statusTitle}</span>
-          {!hasSource && <span className="status-inline-message">{statusMessage}</span>}
-          {hasSource && <span className="status-inline-message">{statusMessage}</span>}
-        </div>
-        <div className="status-pills dense-pills">
-          <span className="status-pill">Mode: {manualFormat === 'auto' ? 'Auto' : manualFormat.toUpperCase()}</span>
-          <span className="status-pill">View: {recommendedView}</span>
-          <span className="status-pill">Shape: {detectedShape}</span>
-          <span className="status-pill">Lines: {sourceLines}</span>
-          {canShowTable && <span className="status-pill">Rows: {tableData.rows.length}</span>}
-          {canShowTable && <span className="status-pill">Columns: {Math.max(tableData.columns.length - (tableData.columns.includes('_line') ? 1 : 0), 0)}</span>}
-          <span className="status-pill">Issues: {visibleIssues.length}</span>
-          {filename && <span className="status-pill">File: {filename}</span>}
-          {restored && !filename && <span className="status-pill">Restored session</span>}
-        </div>
+      <section className="panel command-shell">
+        <input
+          aria-label="Smart command bar"
+          className="smart-command"
+          type="text"
+          value={commandBarValue}
+          placeholder={
+            hasSource
+              ? 'Filter rows or run /help, /source, /raw, /tree, /errors, /theme dark'
+              : 'Type /sample jsonl, /help, or open the source drawer below'
+          }
+          onChange={(event) => handleCommandInput(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' && commandBarValue.trimStart().startsWith('/')) {
+              event.preventDefault()
+              void runCommand()
+            }
+
+            if (event.key === 'Escape') {
+              if (commandBarValue.trimStart().startsWith('/')) {
+                setCommandBarValue(tableQuery)
+              } else if (drawerPanel !== null || selectedRow) {
+                setDrawerPanel(null)
+                setSelectedRow(null)
+                setStatusFlash('Closed open drawers.')
+              }
+            }
+          }}
+        />
+        {!activeCommand && filteredTableData.chips.length > 0 && (
+          <div className="active-chip-row" aria-label="Active table filters">
+            {filteredTableData.chips.map((chip) => (
+              <ActiveChip key={chip.key} chip={chip} onRemove={handleRemoveChip} />
+            ))}
+          </div>
+        )}
       </section>
 
-      <section className={`panel source-drawer ${sourcePanelOpen ? 'open' : 'closed'}`}>
-        <div className="source-drawer-header">
-          <div>
-            <h2>Source</h2>
-            {(!hasSource || sourcePanelOpen) && (
-              <p className="panel-copy source-drawer-copy">
-                {!hasSource
-                  ? 'Paste, drop, or sample a payload. The drawer starts open while the viewer is empty.'
-                  : 'Editing stays one click away. Investigation stays in front.'}
-              </p>
-            )}
-          </div>
-          <div className="source-drawer-actions">
-            <label className="inline-select">
-              <span>Mode</span>
-              <select
-                aria-label="Mode"
-                value={manualFormat}
-                onChange={(event) => {
-                  setManualFormat(event.target.value as ManualFormat)
-                  setAutoView(true)
-                }}
-              >
-                <option value="auto">Auto</option>
-                <option value="json">JSON</option>
-                <option value="jsonl">JSONL</option>
-              </select>
-            </label>
-            <button
-              className="drawer-toggle"
-              type="button"
-              aria-expanded={sourcePanelOpen}
-              onClick={() => setSourcePanelOpen((current) => !current)}
-            >
-              {sourcePanelOpen ? 'Hide source' : 'Show source'}
-            </button>
-          </div>
-        </div>
+      <section className={`status-line tone-${parseTone}`} aria-live="polite">
+        <span className="status-summary">{statusSummary}</span>
+        <span className="status-secondary">{statusSecondary}</span>
+      </section>
 
-        {sourcePanelOpen && (
+      {showSourceDrawer && (
+        <section className="panel drawer" aria-label="Source drawer">
+          <div className="drawer-header">
+            <div>
+              <h2>Source</h2>
+              <p className="panel-copy">
+                Paste, edit, drop, or upload payloads here. Once loaded, the table stays in front and the source stays one command away.
+              </p>
+            </div>
+            <div className="drawer-actions">
+              <label className="inline-select">
+                <span>Mode</span>
+                <select
+                  aria-label="Mode"
+                  value={manualFormat}
+                  onChange={(event) => {
+                    setManualFormat(event.target.value as ManualFormat)
+                    setAutoView(true)
+                  }}
+                >
+                  <option value="auto">Auto</option>
+                  <option value="json">JSON</option>
+                  <option value="jsonl">JSONL</option>
+                </select>
+              </label>
+              <button type="button" onClick={() => fileInputRef.current?.click()}>
+                Upload
+              </button>
+              {hasSource && (
+                <button type="button" className="quiet-button" onClick={() => setDrawerPanel(null)}>
+                  Hide source
+                </button>
+              )}
+            </div>
+          </div>
+
           <div className="source-drawer-body">
             <div className="source-utility-row">
               <div className="sample-actions compact">
@@ -722,7 +914,7 @@ function App() {
             </div>
 
             <div
-              className="dropzone compact-dropzone"
+              className="dropzone"
               onDragOver={(event) => event.preventDefault()}
               onDrop={(event) => {
                 event.preventDefault()
@@ -753,62 +945,126 @@ function App() {
               />
             </div>
 
-            <div className="input-meta compact-meta">
+            <div className="input-meta">
               <span>Lines: {sourceLines}</span>
-              <span>Recovered rows: {parsed.jsonlRows.length || tableData.rows.length}</span>
-              {canShowTable && <span>Visible rows: {filteredTableData.visibleRows}</span>}
-              {canShowTable && <span>Suspicious rows: {investigation.suspiciousRows}</span>}
+              <span>Shape: {detectedShape}</span>
+              {canShowTable && <span>Rows: {tableData.rows.length}</span>}
               <span>Issues: {visibleIssues.length}</span>
             </div>
           </div>
-        )}
-      </section>
+        </section>
+      )}
 
-      <section className="panel output-panel">
-        <div className="panel-header output-header compact-output-header">
-          <div className="output-header-copy">
-            {hasSource ? (
-              <>
-                <span className="output-kicker">{canShowTable ? 'Investigation desk' : `Recommended: ${recommendedView}`}</span>
-                <p className="panel-copy">{canShowTable ? 'Table first. Other modes are supporting evidence.' : recommendedViewReason}</p>
-              </>
+      {showAuxDrawer && drawerPanel === 'help' && (
+        <section className="panel drawer">
+          <div className="drawer-header">
+            <div>
+              <h2>Help</h2>
+              <p className="panel-copy">The power is still here. It just no longer shouts over the table.</p>
+            </div>
+            <div className="drawer-actions">
+              <button type="button" className="quiet-button" onClick={() => setDrawerPanel(null)}>
+                Close
+              </button>
+            </div>
+          </div>
+          <CommandHelp />
+        </section>
+      )}
+
+      {showAuxDrawer && drawerPanel === 'raw' && (
+        <section className="panel drawer">
+          <div className="drawer-header">
+            <div>
+              <h2>Raw source</h2>
+              <p className="panel-copy">Secondary evidence, surfaced only when asked.</p>
+            </div>
+            <div className="drawer-actions">
+              <button type="button" onClick={() => void handleCopy(sourceText, 'Copied source.')} disabled={!hasSource}>
+                Copy source
+              </button>
+              <button type="button" className="quiet-button" onClick={() => setDrawerPanel(null)}>
+                Close
+              </button>
+            </div>
+          </div>
+          <div className="output-block drawer-block">
+            <pre>{sourceText}</pre>
+          </div>
+        </section>
+      )}
+
+      {showAuxDrawer && drawerPanel === 'tree' && (
+        <section className="panel drawer">
+          <div className="drawer-header">
+            <div>
+              <h2>Tree</h2>
+              <p className="panel-copy">Structured drill-down when the table flattening is not enough.</p>
+            </div>
+            <div className="drawer-actions">
+              <button type="button" onClick={() => void handleCopy(prettyPrintJson(parsed.jsonValue), 'Copied formatted JSON.')} disabled={!canShowTree}>
+                Copy formatted JSON
+              </button>
+              <button type="button" className="quiet-button" onClick={() => setDrawerPanel(null)}>
+                Close
+              </button>
+            </div>
+          </div>
+          <div className="output-block drawer-block">
+            {canShowTree ? (
+              <JsonTree value={parsed.jsonValue} />
             ) : (
-              <>
-                <h2>Ready when you are</h2>
-                <p className="panel-copy">No payload loaded yet.</p>
-              </>
+              <ViewUnavailable
+                title="Tree view is not available for this payload"
+                description={parsed.format === 'jsonl' ? 'JSONL is a stream of records, so the table is usually the better first view.' : 'Only parsed JSON objects and arrays can be shown as a tree.'}
+              />
             )}
           </div>
-          <div className="tabs tabs-secondary" role="tablist" aria-label="Output views">
-            {tabs.map((view) => {
-              const label = view === 'table' ? 'Table' : view === 'raw' ? 'Raw' : view === 'tree' ? 'Tree' : 'Errors'
-              const disabled = (view === 'tree' && !canShowTree) || (view === 'table' && !canShowTable)
-              return (
-                <button key={view} className={activeView === view ? 'active' : ''} onClick={() => handleViewClick(view)} disabled={disabled}>
-                  {label}
-                </button>
-              )
-            })}
-          </div>
-        </div>
+        </section>
+      )}
 
+      {showAuxDrawer && drawerPanel === 'errors' && (
+        <section className="panel drawer">
+          <div className="drawer-header">
+            <div>
+              <h2>Parse issues</h2>
+              <p className="panel-copy">Only visible on demand now.</p>
+            </div>
+            <div className="drawer-actions">
+              <button type="button" className="quiet-button" onClick={() => setDrawerPanel(null)}>
+                Close
+              </button>
+            </div>
+          </div>
+          <div className="output-block drawer-block">
+            {visibleIssues.length === 0 ? (
+              <ViewUnavailable title="No parse issues" description="The payload parsed cleanly." />
+            ) : (
+              <ul className="issues">
+                {visibleIssues.map((issue, index) => (
+                  <li key={`${issue.line ?? 'x'}-${index}`}>
+                    <strong>{issue.line ? `Line ${issue.line}` : 'Error'}:</strong> {issue.message}
+                    {issue.content && <pre>{issue.content}</pre>}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </section>
+      )}
+
+      <section className="panel output-panel">
         {!hasSource ? (
           <div className="output-block empty-output">
             <EmptyState onLoadSample={loadSample} />
           </div>
-        ) : activeView === 'raw' ? (
+        ) : mainView === 'raw' ? (
           <div className="output-block">
-            <div className="action-row compact-action-row">
-              <button onClick={() => void handleCopy(sourceText)} disabled={!hasSource}>Copy source</button>
-            </div>
             <pre>{sourceText}</pre>
           </div>
-        ) : activeView === 'tree' ? (
+        ) : mainView === 'tree' ? (
           canShowTree ? (
             <div className="output-block tree-block">
-              <div className="action-row compact-action-row">
-                <button onClick={() => void handleCopy(prettyPrintJson(parsed.jsonValue))}>Copy formatted JSON</button>
-              </div>
               <JsonTree value={parsed.jsonValue} />
             </div>
           ) : (
@@ -816,100 +1072,14 @@ function App() {
               <ViewUnavailable
                 title="Tree view is not available for this payload"
                 description={parsed.format === 'jsonl' ? 'JSONL is a stream of records, so the table is usually the better first view.' : 'Only parsed JSON objects and arrays can be shown as a tree.'}
-                action={canShowTable ? <button onClick={() => handleViewClick('table')}>Go to table</button> : <button onClick={() => handleViewClick('errors')}>Inspect errors</button>}
+                action={canShowTable ? <button onClick={() => setDrawerPanel(null)}>Back to table</button> : undefined}
               />
             </div>
           )
-        ) : activeView === 'table' ? (
+        ) : mainView === 'table' ? (
           canShowTable ? (
             <div className="output-block table-block">
-              <section className="investigation-strip" aria-label="Payload investigation summary">
-                <div className="investigation-metrics">
-                  <div className="metric-card emphasis">
-                    <span className="metric-label">Rows in play</span>
-                    <strong>{filteredTableData.visibleRows}</strong>
-                    <span className="metric-subtle">of {filteredTableData.totalRows}</span>
-                  </div>
-                  <div className="metric-card">
-                    <span className="metric-label">Suspicious rows</span>
-                    <strong>{investigation.suspiciousRows}</strong>
-                    <span className="metric-subtle">missing, null, empty, or nested</span>
-                  </div>
-                  <div className="metric-card">
-                    <span className="metric-label">Sparse columns</span>
-                    <strong>{investigation.sparseColumns.length}</strong>
-                    <span className="metric-subtle">fields missing in some rows</span>
-                  </div>
-                  <div className="metric-card">
-                    <span className="metric-label">Mixed columns</span>
-                    <strong>{investigation.mixedColumns.length}</strong>
-                    <span className="metric-subtle">same field, different shapes</span>
-                  </div>
-                </div>
-                <div className="shortcut-strip">
-                  {visibleIssues.length > 0 && (
-                    <ShortcutButton label={`Open ${visibleIssues.length} parse issue${visibleIssues.length === 1 ? '' : 's'}`} tone="warning" onClick={() => handleViewClick('errors')} />
-                  )}
-                  {investigation.rowsWithMissing > 0 && (
-                    <ShortcutButton label={`Rows with missing fields (${investigation.rowsWithMissing})`} onClick={() => applyInvestigationQuery('has:missing')} />
-                  )}
-                  {investigation.rowsWithNull > 0 && (
-                    <ShortcutButton label={`Rows with nulls (${investigation.rowsWithNull})`} onClick={() => applyInvestigationQuery('has:null')} />
-                  )}
-                  {investigation.rowsWithEmpty > 0 && (
-                    <ShortcutButton label={`Rows with empty strings (${investigation.rowsWithEmpty})`} onClick={() => applyInvestigationQuery('has:empty')} />
-                  )}
-                  {investigation.rowsWithComplex > 0 && (
-                    <ShortcutButton label={`Rows with nested values (${investigation.rowsWithComplex})`} onClick={() => applyInvestigationQuery('has:complex')} />
-                  )}
-                  {columnShortcutSignals.map((signal) => (
-                    <ShortcutButton key={`missing-${signal.column}`} label={`Check ${signal.column} gaps (${signal.missingCount})`} onClick={() => applyInvestigationQuery(`${signal.column}=missing`)} />
-                  ))}
-                  {mixedShortcutSignals.map(({ signal, kind }) => (
-                    <ShortcutButton
-                      key={`mixed-${signal.column}-${kind}`}
-                      label={`Check ${signal.column} ${semanticPillLabel(kind)} rows`}
-                      onClick={() => applyInvestigationQuery(`${signal.column}=${kind}`)}
-                    />
-                  ))}
-                </div>
-              </section>
-
-              <div className="action-row table-toolbar compact-action-row">
-                <div className="table-query-stack">
-                  <div className="table-query-row">
-                    <input
-                      aria-label="Filter rows"
-                      className="table-search"
-                      type="text"
-                      placeholder="Try has:missing, error=object, notes=empty, score>=90, sort:-_line"
-                      value={tableQuery}
-                      onChange={(event) => setTableQuery(event.target.value)}
-                    />
-                    <span className="table-count-pill">{filteredTableData.visibleRows} / {filteredTableData.totalRows} rows</span>
-                    {activeFilterCount > 0 && <span className="table-mini-pill">{activeFilterCount} filter{activeFilterCount === 1 ? '' : 's'}</span>}
-                    <button onClick={() => setTableExpanded((current) => !current)}>
-                      {tableExpanded ? 'Collapse table' : 'Expand table'}
-                    </button>
-                    <button onClick={resetTableControls} disabled={!tableQuery && !tableSort}>Reset table</button>
-                    <button onClick={() => void handleCopy(JSON.stringify(filteredTableData.rows.map((row) => row.__raw), null, 2))}>Copy rows</button>
-                  </div>
-                  <div className="table-query-meta">
-                    <p className="muted table-filter-hint">
-                      Free text searches every visible column. Structured filters: <code>field:value</code>, <code>field=value</code>, <code>field!=value</code>, <code>field&gt;=10</code>, <code>sort:-field</code>, plus messy-payload helpers like <code>has:missing</code>, <code>field=object</code>, <code>field=array</code>, <code>field=empty</code>.
-                    </p>
-                    {filteredTableData.chips.length > 0 && (
-                      <div className="active-chip-row" aria-label="Active table filters">
-                        {filteredTableData.chips.map((chip) => (
-                          <ActiveChip key={chip.key} chip={chip} onRemove={handleRemoveChip} />
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              <div className="table-body-layout">
+              <div className={`table-shell${selectedRow ? ' detail-open' : ''}`}>
                 <div className="table-wrap">
                   <table>
                     <thead>
@@ -974,8 +1144,8 @@ function App() {
                           <td colSpan={filteredTableData.columns.length || 1}>
                             <div className="table-empty-state">
                               <strong>No rows match the current filters.</strong>
-                              <span className="muted">Loosen the query or reset the table controls.</span>
-                              <button type="button" onClick={resetTableControls}>Reset table</button>
+                              <span className="muted">Loosen the query, clear chips, or use /reset.</span>
+                              <button type="button" onClick={resetTableControls}>Clear filters</button>
                             </div>
                           </td>
                         </tr>
@@ -984,31 +1154,29 @@ function App() {
                   </table>
                 </div>
 
-                <RowInspector
-                  row={selectedRow}
-                  rowSignal={selectedRowSignal}
-                  onCopy={(text) => void handleCopy(text)}
-                  onFilter={(query) => applyInvestigationQuery(query, 'append')}
-                />
+                {selectedRow && (
+                  <RowInspector
+                    row={selectedRow}
+                    rowSignal={selectedRowSignal}
+                    onClose={() => setSelectedRow(null)}
+                    onCopy={(text) => void handleCopy(text, 'Copied selected row.')}
+                    onFilter={(query) => applyInvestigationQuery(query, 'append')}
+                  />
+                )}
               </div>
             </div>
           ) : (
             <div className="output-block">
               <ViewUnavailable
                 title="Table view is not available yet"
-                description={visibleIssues.length > 0 ? 'No valid rows were recovered from this payload. Check the error list first.' : 'This payload does not flatten into rows yet.'}
-                action={<button onClick={() => handleViewClick(visibleIssues.length > 0 ? 'errors' : 'raw')}>{visibleIssues.length > 0 ? 'Inspect errors' : 'Back to raw'}</button>}
+                description={visibleIssues.length > 0 ? 'No valid rows were recovered from this payload. Open parse issues or fix the source first.' : 'This payload does not flatten into rows yet.'}
               />
             </div>
           )
         ) : (
           <div className="output-block">
             {visibleIssues.length === 0 ? (
-              <ViewUnavailable
-                title="No parse issues"
-                description="The payload parsed cleanly. Use the table, raw view, or tree to inspect the content."
-                action={<button onClick={() => handleViewClick(recommendedView === 'errors' ? 'raw' : recommendedView)}>Go to {recommendedView === 'errors' ? 'raw' : recommendedView}</button>}
-              />
+              <ViewUnavailable title="No parse issues" description="The payload parsed cleanly. Use /raw or /tree if you need secondary views." />
             ) : (
               <ul className="issues">
                 {visibleIssues.map((issue, index) => (

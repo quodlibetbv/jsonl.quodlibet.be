@@ -18,7 +18,7 @@ export function getRecommendedView(parsed: ParsedResult, tableRowCount: number):
   if (parsed.format === 'json') {
     if (parsed.issues.length > 0) return 'errors'
     if (Array.isArray(parsed.jsonValue)) return tableRowCount > 0 ? 'table' : 'raw'
-    if (typeof parsed.jsonValue === 'object' && parsed.jsonValue !== null) return 'tree'
+    if (typeof parsed.jsonValue === 'object' && parsed.jsonValue !== null) return tableRowCount > 0 ? 'table' : 'tree'
     return 'raw'
   }
 
@@ -41,7 +41,9 @@ export function getRecommendedViewReason(parsed: ParsedResult, tableRowCount: nu
   if (parsed.format === 'json') {
     if (parsed.issues.length > 0) return 'Forced JSON mode found a parse error, so the error list is the clearest first view.'
     if (Array.isArray(parsed.jsonValue)) return tableRowCount > 0 ? 'Top-level arrays are easiest to scan as rows first.' : 'Showing the raw payload first.'
-    if (typeof parsed.jsonValue === 'object' && parsed.jsonValue !== null) return 'Structured JSON objects are easiest to inspect as a tree first.'
+    if (typeof parsed.jsonValue === 'object' && parsed.jsonValue !== null) {
+      return tableRowCount > 0 ? 'Flattened object fields are easiest to scan in the table first.' : 'Structured JSON objects are easiest to inspect as a tree first.'
+    }
     return 'Scalar JSON values are clearest in raw form first.'
   }
 

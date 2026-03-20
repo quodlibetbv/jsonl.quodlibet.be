@@ -2,6 +2,7 @@ export type DetectedFormat = 'json' | 'jsonl' | 'unknown'
 
 export type ViewMode = 'raw' | 'tree' | 'table' | 'errors'
 export type ThemeMode = 'system' | 'light' | 'dark'
+export type SortDirection = 'asc' | 'desc'
 
 export interface ParseIssue {
   line?: number
@@ -33,6 +34,27 @@ export interface TableData {
   rows: TableRow[]
 }
 
+export interface TableSortState {
+  column: string
+  direction: SortDirection
+}
+
+export interface TableQueryChip {
+  key: string
+  kind: 'search' | 'filter' | 'sort'
+  label: string
+  source: 'query' | 'state'
+  tokenIndex?: number
+}
+
+export interface TableQueryResult extends TableData {
+  totalRows: number
+  visibleRows: number
+  chips: TableQueryChip[]
+  sort: TableSortState | null
+  sortSource: 'query' | 'state' | null
+}
+
 export interface PersistedState {
   sourceText: string
   manualFormat: DetectedFormat | 'auto'
@@ -40,6 +62,8 @@ export interface PersistedState {
   theme: ThemeMode
   skipInvalidJsonl: boolean
   tableExpanded: boolean
-  tableSearch: string
-  columnFilters: Record<string, string>
+  tableQuery?: string
+  tableSort?: TableSortState | null
+  tableSearch?: string
+  columnFilters?: Record<string, string>
 }

@@ -182,7 +182,7 @@ test('can require clean jsonl before showing the table', async ({ page }) => {
   await page.getByLabel('JSON input').fill('{"id":1,"name":"Ada"}\nnot json\n{"id":2,"name":"Linus"}')
   await expect(page.locator('table')).toBeVisible()
   await page.getByRole('checkbox', { name: 'Ignore invalid JSONL lines in table view' }).uncheck()
-  await expect(page.getByRole('button', { name: 'Errors' })).toHaveClass(/active/)
+  await expect(page.getByRole('tablist', { name: 'Output views' }).getByRole('button', { name: 'Errors', exact: true })).toHaveClass(/active/)
   await expect(page.locator('table')).toHaveCount(0)
 })
 

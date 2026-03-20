@@ -252,6 +252,14 @@ h4 {
   min-height: 2.5rem;
 }
 
+.status-side {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+}
+
 .status-line.tone-idle {
   background: linear-gradient(180deg, var(--panel) 0%, var(--panel-2) 100%);
 }
@@ -296,6 +304,31 @@ h4 {
 
 .quiet-button {
   background: transparent;
+}
+
+.status-link-button {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.79rem;
+  line-height: 1.2;
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--muted) 45%, transparent);
+  text-underline-offset: 0.16em;
+}
+
+.status-link-button:hover,
+.status-link-button:focus-visible {
+  transform: none;
+  color: var(--accent);
+  text-decoration-color: currentColor;
+}
+
+.status-link-button:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 22%, transparent);
+  outline-offset: 3px;
 }
 
 .inline-select,
@@ -746,6 +779,10 @@ h4 {
   .source-utility-row {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .status-side {
+    justify-content: flex-start;
   }
 
   .status-secondary {

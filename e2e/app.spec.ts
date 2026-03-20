@@ -43,16 +43,16 @@ test('row detail stays hidden until a row is selected and can append anomaly fil
   await expect(page.locator('tbody tr')).toHaveCount(1)
 })
 
-test('source stays out of the default loaded view and reopens through the command bar', async ({ page }) => {
+test('source stays out of the default loaded view and reopens through the explicit edit path', async ({ page }) => {
   await page.goto('/')
   await expect(page.getByRole('heading', { name: 'Source' })).toBeVisible()
 
   await page.getByRole('button', { name: 'Load JSON sample' }).click()
   await expect(page.getByRole('heading', { name: 'Source' })).toHaveCount(0)
   await expect(page.locator('table')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Edit source' })).toBeVisible()
 
-  await page.getByLabel('Smart command bar').fill('/source')
-  await page.getByLabel('Smart command bar').press('Enter')
+  await page.getByRole('button', { name: 'Edit source' }).click()
   await expect(page.getByRole('heading', { name: 'Source' })).toBeVisible()
 })
 
@@ -71,7 +71,7 @@ test('supports file upload and keeps the row detail closed after load', async ({
   await expect(page.getByText('Current file: sample.jsonl')).toBeVisible()
 })
 
-test('restores into the simplified loaded layout after reload', async ({ page }) => {
+test('restores into the simplified loaded layout after reload with an explicit source edit path', async ({ page }) => {
   await page.goto('/')
   await page.getByLabel('JSON input').fill('{"persist":true}')
   await page.reload()
@@ -79,9 +79,9 @@ test('restores into the simplified loaded layout after reload', async ({ page })
   await expect(page.locator('table')).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Source' })).toHaveCount(0)
   await expect(page.getByLabel('Smart command bar')).toHaveValue('')
+  await expect(page.getByRole('button', { name: 'Edit source' })).toBeVisible()
 
-  await page.getByLabel('Smart command bar').fill('/source')
-  await page.getByLabel('Smart command bar').press('Enter')
+  await page.getByRole('button', { name: 'Edit source' }).click()
   await expect(page.getByLabel('JSON input')).toHaveValue('{"persist":true}')
   await expect(page.getByText(/Restored previous session/)).toBeVisible()
 })

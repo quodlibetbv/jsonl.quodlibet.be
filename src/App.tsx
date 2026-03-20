@@ -854,7 +854,21 @@ function App() {
 
       <section className={`status-line tone-${parseTone}`} aria-live="polite">
         <span className="status-summary">{statusSummary}</span>
-        <span className="status-secondary">{statusSecondary}</span>
+        <div className="status-side">
+          {hasSource && !showSourceDrawer && (
+            <button
+              type="button"
+              className="status-link-button"
+              onClick={() => {
+                setDrawerPanel('source')
+                setStatusFlash('Opened source drawer.')
+              }}
+            >
+              Edit source
+            </button>
+          )}
+          <span className="status-secondary">{statusSecondary}</span>
+        </div>
       </section>
 
       {showSourceDrawer && (

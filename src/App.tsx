@@ -402,8 +402,8 @@ function App() {
         <div className="brand-row compact-brand">
           <img src={logoUrl} alt="Quodlibet logo" className="brand-logo" />
           <div>
-            <p className="eyebrow">quodlibet json(l) viewer</p>
-            <h1>Table-first local inspection</h1>
+            <h1>Quodlibet JSON(L) Viewer</h1>
+            <p className="eyebrow">Table-first local inspection</p>
           </div>
         </div>
         <div className="toolbar">

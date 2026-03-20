@@ -1,6 +1,6 @@
-# JSONL Viewer
+# Quodlibet JSON(L) Viewer
 
-Static, local-first JSON and JSONL viewer for developers.
+Table-first local inspection for JSON and JSONL.
 
 ## Features
 

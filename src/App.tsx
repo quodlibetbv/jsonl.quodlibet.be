@@ -791,6 +791,11 @@ function App() {
   const statusSecondary = activeCommand
     ? `Press Enter to run ${commandBarValue.trim()}`
     : statusFlash ?? (!hasSource ? 'Use /sample jsonl or open the source drawer.' : 'Type /help to surface hidden tools.')
+  const sourceDrawerNote = filename
+    ? `Current file: ${filename}`
+    : restored && !filename
+      ? 'Restored previous session from browser storage.'
+      : null
 
   return (
     <div className={`app-shell${tableExpanded ? ' table-expanded' : ''}${hasSource ? ' has-source' : ' is-empty'}`}>
@@ -872,100 +877,128 @@ function App() {
       </section>
 
       {showSourceDrawer && (
-        <section className="panel drawer" aria-label="Source drawer">
-          <div className="drawer-header">
-            <div>
-              <h2>Source</h2>
-              <p className="panel-copy">
-                Paste, edit, drop, or upload payloads here. Once loaded, the table stays in front and the source stays one command away.
-              </p>
-            </div>
-            <div className="drawer-actions">
-              <label className="inline-select">
-                <span>Mode</span>
-                <select
-                  aria-label="Mode"
-                  value={manualFormat}
-                  onChange={(event) => {
-                    setManualFormat(event.target.value as ManualFormat)
-                    setAutoView(true)
+        <section className={`panel drawer${hasSource ? ' source-drawer-loaded' : ''}`} aria-label="Source drawer">
+          {hasSource ? (
+            <>
+              <div className="drawer-header source-drawer-header-compact">
+                <div>
+                  <h2>Source</h2>
+                  {sourceDrawerNote && <p className="panel-copy">{sourceDrawerNote}</p>}
+                </div>
+                <div className="drawer-actions compact-actions">
+                  <button type="button" className="quiet-button compact-button" onClick={() => fileInputRef.current?.click()}>
+                    Upload
+                  </button>
+                  <button type="button" className="quiet-button compact-button" onClick={() => setDrawerPanel(null)}>
+                    Hide source
+                  </button>
+                </div>
+              </div>
+
+              <div className="source-drawer-body source-drawer-body-minimal">
+                <div className="source-text-wrap">
+                  <textarea
+                    aria-label="JSON input"
+                    className="source-text"
+                    spellCheck={false}
+                    value={sourceText}
+                    onChange={(event) => updateSource(event.target.value, filename)}
+                    placeholder=""
+                  />
+                </div>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="drawer-header">
+                <div>
+                  <h2>Source</h2>
+                  <p className="panel-copy">
+                    Paste, edit, drop, or upload payloads here. Once loaded, the table stays in front and the source stays one command away.
+                  </p>
+                </div>
+                <div className="drawer-actions">
+                  <label className="inline-select">
+                    <span>Mode</span>
+                    <select
+                      aria-label="Mode"
+                      value={manualFormat}
+                      onChange={(event) => {
+                        setManualFormat(event.target.value as ManualFormat)
+                        setAutoView(true)
+                      }}
+                    >
+                      <option value="auto">Auto</option>
+                      <option value="json">JSON</option>
+                      <option value="jsonl">JSONL</option>
+                    </select>
+                  </label>
+                  <button type="button" onClick={() => fileInputRef.current?.click()}>
+                    Upload
+                  </button>
+                </div>
+              </div>
+
+              <div className="source-drawer-body">
+                <div className="source-utility-row">
+                  <div className="sample-actions compact">
+                    <button onClick={() => loadSample('json')}>Sample JSON</button>
+                    <button onClick={() => loadSample('jsonl')}>Sample JSONL</button>
+                    <button onClick={() => loadSample('broken-jsonl')}>Sample broken JSONL</button>
+                  </div>
+                  <label className="checkbox-row compact-checkbox">
+                    <input
+                      type="checkbox"
+                      checked={skipInvalidJsonl}
+                      onChange={(event) => {
+                        setSkipInvalidJsonl(event.target.checked)
+                        setAutoView(true)
+                      }}
+                    />
+                    Ignore invalid JSONL lines in table view
+                  </label>
+                </div>
+
+                <div
+                  className="dropzone"
+                  onDragOver={(event) => event.preventDefault()}
+                  onDrop={(event) => {
+                    event.preventDefault()
+                    const file = event.dataTransfer.files?.[0]
+                    if (file) void handleFile(file)
                   }}
                 >
-                  <option value="auto">Auto</option>
-                  <option value="json">JSON</option>
-                  <option value="jsonl">JSONL</option>
-                </select>
-              </label>
-              <button type="button" onClick={() => fileInputRef.current?.click()}>
-                Upload
-              </button>
-              {hasSource && (
-                <button type="button" className="quiet-button" onClick={() => setDrawerPanel(null)}>
-                  Hide source
-                </button>
-              )}
-            </div>
-          </div>
-
-          <div className="source-drawer-body">
-            <div className="source-utility-row">
-              <div className="sample-actions compact">
-                <button onClick={() => loadSample('json')}>Sample JSON</button>
-                <button onClick={() => loadSample('jsonl')}>Sample JSONL</button>
-                <button onClick={() => loadSample('broken-jsonl')}>Sample broken JSONL</button>
-              </div>
-              <label className="checkbox-row compact-checkbox">
-                <input
-                  type="checkbox"
-                  checked={skipInvalidJsonl}
-                  onChange={(event) => {
-                    setSkipInvalidJsonl(event.target.checked)
-                    setAutoView(true)
-                  }}
-                />
-                Ignore invalid JSONL lines in table view
-              </label>
-            </div>
-
-            <div
-              className="dropzone"
-              onDragOver={(event) => event.preventDefault()}
-              onDrop={(event) => {
-                event.preventDefault()
-                const file = event.dataTransfer.files?.[0]
-                if (file) void handleFile(file)
-              }}
-            >
-              <p className="dropzone-title">Drop a file here or use Upload.</p>
-              <p className="muted">Accepts .json, .jsonl, .ndjson, and plain text files.</p>
-              {filename && <p className="muted">Current file: {filename}</p>}
-              {restored && !filename && <p className="muted">Restored previous session from browser storage.</p>}
-            </div>
-
-            <div className="source-text-wrap">
-              {!sourceText && (
-                <div className="editor-empty-overlay" aria-hidden="true">
-                  <p>Paste JSON or JSONL here</p>
-                  <pre>{'{"name":"Ada"}\n{"name":"Linus"}'}</pre>
+                  <p className="dropzone-title">Drop a file here or use Upload.</p>
+                  <p className="muted">Accepts .json, .jsonl, .ndjson, and plain text files.</p>
+                  {sourceDrawerNote && <p className="muted">{sourceDrawerNote}</p>}
                 </div>
-              )}
-              <textarea
-                aria-label="JSON input"
-                className="source-text"
-                spellCheck={false}
-                value={sourceText}
-                onChange={(event) => updateSource(event.target.value, filename)}
-                placeholder=""
-              />
-            </div>
 
-            <div className="input-meta">
-              <span>Lines: {sourceLines}</span>
-              <span>Shape: {detectedShape}</span>
-              {canShowTable && <span>Rows: {tableData.rows.length}</span>}
-              <span>Issues: {visibleIssues.length}</span>
-            </div>
-          </div>
+                <div className="source-text-wrap">
+                  {!sourceText && (
+                    <div className="editor-empty-overlay" aria-hidden="true">
+                      <p>Paste JSON or JSONL here</p>
+                      <pre>{'{"name":"Ada"}\n{"name":"Linus"}'}</pre>
+                    </div>
+                  )}
+                  <textarea
+                    aria-label="JSON input"
+                    className="source-text"
+                    spellCheck={false}
+                    value={sourceText}
+                    onChange={(event) => updateSource(event.target.value, filename)}
+                    placeholder=""
+                  />
+                </div>
+
+                <div className="input-meta">
+                  <span>Lines: {sourceLines}</span>
+                  <span>Shape: {detectedShape}</span>
+                  {canShowTable && <span>Rows: {tableData.rows.length}</span>}
+                  <span>Issues: {visibleIssues.length}</span>
+                </div>
+              </div>
+            </>
+          )}
         </section>
       )}
 

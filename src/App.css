@@ -344,6 +344,27 @@ h4 {
   gap: 0.65rem;
 }
 
+.source-drawer-loaded {
+  gap: 0.5rem;
+}
+
+.source-drawer-header-compact {
+  align-items: center;
+}
+
+.source-drawer-body-minimal {
+  gap: 0;
+}
+
+.compact-actions {
+  gap: 0.35rem;
+}
+
+.compact-button {
+  padding: 0.28rem 0.58rem;
+  font-size: 0.76rem;
+}
+
 .source-utility-row {
   justify-content: space-between;
   align-items: flex-start;

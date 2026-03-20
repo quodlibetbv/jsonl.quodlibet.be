@@ -53,7 +53,16 @@ test('source stays out of the default loaded view and reopens through the explic
   await expect(page.getByRole('button', { name: 'Edit source' })).toBeVisible()
 
   await page.getByRole('button', { name: 'Edit source' }).click()
-  await expect(page.getByRole('heading', { name: 'Source' })).toBeVisible()
+  const sourceDrawer = page.getByRole('region', { name: 'Source drawer' })
+  await expect(sourceDrawer.getByRole('heading', { name: 'Source' })).toBeVisible()
+  await expect(sourceDrawer.getByLabel('JSON input')).toBeVisible()
+  await expect(sourceDrawer.getByRole('button')).toHaveCount(2)
+  await expect(sourceDrawer.getByRole('button', { name: 'Upload' })).toBeVisible()
+  await expect(sourceDrawer.getByRole('button', { name: 'Hide source' })).toBeVisible()
+  await expect(sourceDrawer.getByLabel('Mode')).toHaveCount(0)
+  await expect(sourceDrawer.getByText('Drop a file here or use Upload.')).toHaveCount(0)
+  await expect(sourceDrawer.getByText('Sample JSON')).toHaveCount(0)
+  await expect(sourceDrawer.getByText('Ignore invalid JSONL lines in table view')).toHaveCount(0)
 })
 
 test('supports file upload and keeps the row detail closed after load', async ({ page }) => {
@@ -82,6 +91,10 @@ test('restores into the simplified loaded layout after reload with an explicit s
   await expect(page.getByRole('button', { name: 'Edit source' })).toBeVisible()
 
   await page.getByRole('button', { name: 'Edit source' }).click()
-  await expect(page.getByLabel('JSON input')).toHaveValue('{"persist":true}')
-  await expect(page.getByText(/Restored previous session/)).toBeVisible()
+  const sourceDrawer = page.getByRole('region', { name: 'Source drawer' })
+  await expect(sourceDrawer.getByLabel('JSON input')).toHaveValue('{"persist":true}')
+  await expect(sourceDrawer.getByText(/Restored previous session/)).toBeVisible()
+  await expect(sourceDrawer.getByRole('button')).toHaveCount(2)
+  await expect(sourceDrawer.getByLabel('Mode')).toHaveCount(0)
+  await expect(sourceDrawer.getByText('Drop a file here or use Upload.')).toHaveCount(0)
 })

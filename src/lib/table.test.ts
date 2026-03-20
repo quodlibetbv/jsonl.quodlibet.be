@@ -5,7 +5,9 @@ describe('tableDataFromJson', () => {
   it('infers columns from array of objects', () => {
     const table = tableDataFromJson([{ id: 1, user: { name: 'Ada' } }, { id: 2 }])
     expect(table.columns).toContain('id')
+    expect(table.columns).toContain('user')
     expect(table.columns).toContain('user.name')
+    expect(table.rows[0].user).toEqual({ name: 'Ada' })
     expect(table.rows[0]['user.name']).toBe('Ada')
   })
 })

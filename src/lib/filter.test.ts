@@ -3,11 +3,11 @@ import { filterTableData, parseTableQuery, removeQueryToken, stripSortTokens, to
 import type { TableData } from '../types'
 
 const table: TableData = {
-  columns: ['id', 'name', 'score', 'meta.team', 'createdAt'],
+  columns: ['id', 'name', 'score', 'meta.team', 'createdAt', 'payload', 'notes'],
   rows: [
-    { __raw: { id: 1 }, id: 1, name: 'Ada Lovelace', score: 98, 'meta.team': 'core', createdAt: '2026-03-18T10:00:00Z' },
-    { __raw: { id: 2 }, id: 2, name: 'Linus Torvalds', score: 88, 'meta.team': 'ops', createdAt: '2026-03-20T07:00:00Z' },
-    { __raw: { id: 3 }, id: 3, name: 'Grace Hopper', score: 91, 'meta.team': 'core', createdAt: '2026-03-19T09:30:00Z' },
+    { __raw: { id: 1 }, id: 1, name: 'Ada Lovelace', score: 98, 'meta.team': 'core', createdAt: '2026-03-18T10:00:00Z', payload: { ok: true }, notes: '' },
+    { __raw: { id: 2 }, id: 2, name: 'Linus Torvalds', score: 88, 'meta.team': 'ops', createdAt: '2026-03-20T07:00:00Z', payload: 'timeout', notes: null },
+    { __raw: { id: 3 }, id: 3, name: 'Grace Hopper', score: 91, 'meta.team': 'core', createdAt: '2026-03-19T09:30:00Z', payload: ['warn'] },
   ],
 }
 
@@ -44,6 +44,33 @@ describe('filterTableData', () => {
     const result = filterTableData(table, 'createdAt>=2026-03-19')
     expect(result.rows).toHaveLength(2)
     expect(result.rows.map((row) => row.name)).toEqual(['Linus Torvalds', 'Grace Hopper'])
+  })
+
+  it('supports semantic filters for missing, null, empty, and structured values', () => {
+    expect(filterTableData(table, 'notes=missing').rows.map((row) => row.name)).toEqual(['Grace Hopper'])
+    expect(filterTableData(table, 'notes=null').rows.map((row) => row.name)).toEqual(['Linus Torvalds'])
+    expect(filterTableData(table, 'notes=empty').rows.map((row) => row.name)).toEqual(['Ada Lovelace'])
+    expect(filterTableData(table, 'payload=object').rows.map((row) => row.name)).toEqual(['Ada Lovelace'])
+    expect(filterTableData(table, 'payload=array').rows.map((row) => row.name)).toEqual(['Grace Hopper'])
+  })
+
+  it('supports row-level has filters for messy records', () => {
+    expect(filterTableData(table, 'has:missing').rows.map((row) => row.name)).toEqual(['Grace Hopper'])
+    expect(filterTableData(table, 'has:null').rows.map((row) => row.name)).toEqual(['Linus Torvalds'])
+    expect(filterTableData(table, 'has:complex').rows.map((row) => row.name)).toEqual(['Ada Lovelace', 'Grace Hopper'])
+    expect(filterTableData(table, 'has:empty').rows.map((row) => row.name)).toEqual(['Ada Lovelace'])
+  })
+
+  it('treats quoted semantic words as literal strings', () => {
+    const literalTable: TableData = {
+      columns: ['id', 'notes'],
+      rows: [
+        { __raw: {}, id: 1, notes: 'missing' },
+        { __raw: {}, id: 2 },
+      ],
+    }
+
+    expect(filterTableData(literalTable, 'notes="missing"').rows.map((row) => row.id)).toEqual([1])
   })
 
   it('sorts from the query', () => {

@@ -10,6 +10,7 @@ function flattenObject(value: Record<string, unknown>, prefix = ''): Record<stri
   Object.entries(value).forEach(([key, inner]) => {
     const nextKey = prefix ? `${prefix}.${key}` : key
     if (isRecord(inner)) {
+      out[nextKey] = inner
       Object.assign(out, flattenObject(inner, nextKey))
     } else {
       out[nextKey] = inner

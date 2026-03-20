@@ -1,4 +1,5 @@
-import type { TableData, TableQueryChip, TableQueryResult, TableRow, TableSortState } from '../types'
+import { getValueSemantic } from './format'
+import type { TableData, TableQueryChip, TableQueryResult, TableRow, TableSortState, ValueSemantic } from '../types'
 
 const STRUCTURED_FILTER_RE = /^([A-Za-z0-9_.-]+)(<=|>=|!=|=|:|<|>)(.+)$/
 const NUMERIC_RE = /^-?(?:\d+|\d*\.\d+)$/
@@ -21,6 +22,7 @@ interface FilterToken extends QueryTokenBase {
   operator: FilterOperator
   rawValue: string
   value: unknown
+  quoted: boolean
 }
 
 interface SortToken extends QueryTokenBase {
@@ -47,6 +49,11 @@ function unquote(input: string): string {
   return trimmed
 }
 
+function isQuoted(input: string): boolean {
+  const trimmed = input.trim()
+  return trimmed.length >= 2 && trimmed.startsWith('"') && trimmed.endsWith('"')
+}
+
 function parseLiteral(input: string): unknown {
   const value = unquote(input)
   const lower = value.toLowerCase()
@@ -57,6 +64,22 @@ function parseLiteral(input: string): unknown {
   if (NUMERIC_RE.test(value)) return Number(value)
 
   return value
+}
+
+function parseSemanticKeyword(input: string, quoted: boolean): ValueSemantic | 'complex' | null {
+  if (quoted) return null
+
+  const normalized = input.trim().toLowerCase()
+  if (normalized === 'missing') return 'missing'
+  if (normalized === 'null') return 'null'
+  if (normalized === 'empty') return 'empty'
+  if (normalized === 'string') return 'string'
+  if (normalized === 'number') return 'number'
+  if (normalized === 'boolean') return 'boolean'
+  if (normalized === 'object') return 'object'
+  if (normalized === 'array') return 'array'
+  if (normalized === 'complex') return 'complex'
+  return null
 }
 
 function formatSearchableValue(value: unknown): string {
@@ -274,6 +297,7 @@ function parseFilterToken(token: QueryTokenBase): FilterToken | SearchToken {
     operator: normalizedOperator,
     rawValue,
     value: parseLiteral(rawValue),
+    quoted: isQuoted(rawValue),
   }
 }
 
@@ -281,6 +305,23 @@ export function parseTableQuery(query: string): ParsedQueryToken[] {
   return tokenizeQuery(query)
     .map((token) => parseSortToken(token) ?? parseFilterToken(token))
     .filter((token) => !(token.kind === 'search' && token.value.length === 0))
+}
+
+function matchesSemantic(value: unknown, semantic: ValueSemantic | 'complex'): boolean {
+  const kind = getValueSemantic(value)
+  if (semantic === 'complex') return kind === 'object' || kind === 'array'
+  return kind === semantic
+}
+
+function rowMatchesHasFilter(row: TableRow, columns: string[], filter: FilterToken): boolean {
+  const semantic = parseSemanticKeyword(filter.rawValue, filter.quoted)
+  if (!semantic) return false
+
+  const candidates = columns.filter((column) => column !== '_line')
+  const matched = candidates.some((column) => matchesSemantic(row[column], semantic))
+
+  if (filter.operator === 'neq') return !matched
+  return matched
 }
 
 function rowMatchesSearch(row: TableRow, columns: string[], searchTokens: SearchToken[]): boolean {
@@ -291,8 +332,18 @@ function rowMatchesSearch(row: TableRow, columns: string[], searchTokens: Search
   })
 }
 
-function rowMatchesFilter(row: TableRow, filter: FilterToken): boolean {
+function rowMatchesFilter(row: TableRow, columns: string[], filter: FilterToken): boolean {
+  if (filter.column.toLowerCase() === 'has') {
+    return rowMatchesHasFilter(row, columns, filter)
+  }
+
   const cellValue = row[filter.column]
+  const semantic = parseSemanticKeyword(filter.rawValue, filter.quoted)
+
+  if (semantic && (filter.operator === 'eq' || filter.operator === 'neq')) {
+    const matched = matchesSemantic(cellValue, semantic)
+    return filter.operator === 'eq' ? matched : !matched
+  }
 
   if (filter.operator === 'contains') {
     return normalizeSearchText(cellValue).includes(String(filter.value).toLowerCase())
@@ -310,8 +361,8 @@ function rowMatchesFilter(row: TableRow, filter: FilterToken): boolean {
   return comparison <= 0
 }
 
-function rowMatchesFilters(row: TableRow, filterTokens: FilterToken[]): boolean {
-  return filterTokens.every((token) => rowMatchesFilter(row, token))
+function rowMatchesFilters(row: TableRow, columns: string[], filterTokens: FilterToken[]): boolean {
+  return filterTokens.every((token) => rowMatchesFilter(row, columns, token))
 }
 
 function compareForSort(left: unknown, right: unknown): number {
@@ -377,7 +428,7 @@ export function filterTableData(table: TableData, query: string, stateSort: Tabl
   const querySort = sortTokens.at(-1)?.sort ?? null
   const resolvedSort = querySort ?? stateSort
 
-  const filteredRows = table.rows.filter((row) => rowMatchesSearch(row, table.columns, searchTokens) && rowMatchesFilters(row, filterTokens))
+  const filteredRows = table.rows.filter((row) => rowMatchesSearch(row, table.columns, searchTokens) && rowMatchesFilters(row, table.columns, filterTokens))
   const rows = sortRows(filteredRows, resolvedSort)
 
   return {

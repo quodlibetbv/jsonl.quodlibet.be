@@ -3,6 +3,7 @@ export type DetectedFormat = 'json' | 'jsonl' | 'unknown'
 export type ViewMode = 'raw' | 'tree' | 'table' | 'errors'
 export type ThemeMode = 'system' | 'light' | 'dark'
 export type SortDirection = 'asc' | 'desc'
+export type ValueSemantic = 'missing' | 'null' | 'empty' | 'string' | 'number' | 'boolean' | 'object' | 'array' | 'unknown'
 
 export interface ParseIssue {
   line?: number
@@ -66,4 +67,42 @@ export interface PersistedState {
   tableSort?: TableSortState | null
   tableSearch?: string
   columnFilters?: Record<string, string>
+}
+
+export interface ColumnSignal {
+  column: string
+  missingCount: number
+  nullCount: number
+  emptyCount: number
+  objectCount: number
+  arrayCount: number
+  presentCount: number
+  dominantKind: ValueSemantic | null
+  distinctKinds: ValueSemantic[]
+  mixedKinds: ValueSemantic[]
+  minorityKinds: ValueSemantic[]
+}
+
+export interface RowSignal {
+  row: TableRow
+  missingColumns: string[]
+  nullColumns: string[]
+  emptyColumns: string[]
+  objectColumns: string[]
+  arrayColumns: string[]
+  suspectScore: number
+}
+
+export interface InvestigationSummary {
+  rowSignals: RowSignal[]
+  rowSignalMap: Map<TableRow, RowSignal>
+  columnSignals: ColumnSignal[]
+  columnSignalMap: Map<string, ColumnSignal>
+  rowsWithMissing: number
+  rowsWithNull: number
+  rowsWithEmpty: number
+  rowsWithComplex: number
+  suspiciousRows: number
+  sparseColumns: ColumnSignal[]
+  mixedColumns: ColumnSignal[]
 }

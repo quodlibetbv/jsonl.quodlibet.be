@@ -1,5 +1,19 @@
 import { expect, test } from '@playwright/test'
 
+function buildLargeJsonl(rows: number): string {
+  return Array.from({ length: rows }, (_, index) =>
+    JSON.stringify({
+      id: index,
+      name: `user-${index}`,
+      team: ['research', 'platform', 'ops'][index % 3],
+      score: (index * 7) % 100,
+      latencyMs: (index * 13) % 5000,
+      status: index % 17 === 0 ? 'error' : index % 11 === 0 ? 'timeout' : 'ok',
+      payload: { region: ['eu', 'us', 'apac'][index % 3], active: index % 2 === 0 },
+    }),
+  ).join('\n')
+}
+
 test('defaults to the table for loaded JSON objects', async ({ page }) => {
   await page.goto('/')
   await page.getByLabel('JSON input').fill('{"user":{"name":"Ada"},"active":true}')
@@ -97,4 +111,29 @@ test('restores into the simplified loaded layout after reload with an explicit s
   await expect(sourceDrawer.getByRole('button')).toHaveCount(2)
   await expect(sourceDrawer.getByLabel('Mode')).toHaveCount(0)
   await expect(sourceDrawer.getByText('Drop a file here or use Upload.')).toHaveCount(0)
+})
+
+test('virtualizes large tables while preserving sorting', async ({ page }) => {
+  const rows = 2000
+  const payload = buildLargeJsonl(rows)
+
+  await page.goto('/')
+  await page.getByLabel('JSON input').evaluate((input, value) => {
+    if (!(input instanceof HTMLTextAreaElement) || typeof value !== 'string') throw new Error('Expected textarea payload input')
+    const valueSetter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set
+    valueSetter?.call(input, value)
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    input.dispatchEvent(new Event('change', { bubbles: true }))
+  }, payload)
+
+  await expect(page.locator('table')).toBeVisible()
+  await expect(page.locator('.status-summary')).toContainText(`${rows}/${rows} rows`)
+  await expect.poll(async () => page.locator('tbody tr').count()).toBeLessThan(120)
+
+  const firstIdCell = page.locator('tbody tr td[data-column="id"]').first()
+  const beforeSort = await firstIdCell.textContent()
+
+  await page.getByRole('button', { name: 'Sort by score' }).click()
+  await page.getByRole('button', { name: 'Sort by score (asc)' }).click()
+  await expect(firstIdCell).not.toHaveText(beforeSort ?? '')
 })

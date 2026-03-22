@@ -514,14 +514,24 @@ h4 {
 }
 
 .table-block {
+  display: flex;
+  height: 68vh;
   padding: 0.18rem;
+  overflow: hidden;
 }
 
 .table-shell {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: 0.7rem;
-  align-items: start;
+  align-items: stretch;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.table-region {
+  min-height: 0;
+  overflow: auto;
 }
 
 .table-shell.detail-open {
@@ -529,7 +539,8 @@ h4 {
 }
 
 .table-wrap {
-  overflow: auto;
+  overflow-x: auto;
+  overflow-y: visible;
   border: 1px solid var(--border);
   border-radius: 12px;
   background: var(--panel);
@@ -555,6 +566,15 @@ h4 {
   top: 0;
   background: var(--panel);
   z-index: 1;
+}
+
+.virtual-spacer-row {
+  pointer-events: none;
+}
+
+.virtual-spacer-cell {
+  padding: 0;
+  border-bottom: 0;
 }
 
 .column-sort {
@@ -706,6 +726,8 @@ h4 {
   top: 0;
   display: grid;
   gap: 0.8rem;
+  max-height: 100%;
+  overflow: auto;
 }
 
 .inspector-section {
@@ -833,5 +855,9 @@ h4 {
 
   .output-block {
     min-height: 52vh;
+  }
+
+  .table-block {
+    height: 52vh;
   }
 }

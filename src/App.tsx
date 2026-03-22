@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { ReactNode } from 'react'
+import type { ReactNode, RefObject } from 'react'
+import { useVirtualizer } from '@tanstack/react-virtual'
 import logoUrl from './assets/quodlibet-logo.svg'
 import './App.css'
 import type {
   ColumnSignal,
   DetectedFormat,
+  InvestigationSummary,
   ParseIssue,
   PersistedState,
   RowSignal,
@@ -26,6 +28,9 @@ import { describeValueShape, getRecommendedView, getRecommendedViewReason } from
 type ManualFormat = DetectedFormat | 'auto'
 type StatusTone = 'idle' | 'ready' | 'warning' | 'error'
 type DrawerPanel = 'help' | 'source' | 'raw' | 'tree' | 'errors' | null
+
+const VIRTUAL_ROW_ESTIMATE = 40
+const VIRTUAL_ROW_OVERSCAN = 12
 
 const JSON_SAMPLE = `{
   "user": {
@@ -356,8 +361,148 @@ sort:-_line`}</pre>
   )
 }
 
+function tableRowKey(row: TableRow, index: number): string {
+  return row._line !== undefined ? `line-${row._line}` : `row-${index}`
+}
+
+function DataTable({
+  columns,
+  rows,
+  sort,
+  investigation,
+  selectedRow,
+  scrollRef,
+  onSortClick,
+  onSelectRow,
+  onReset,
+}: {
+  columns: string[]
+  rows: TableRow[]
+  sort: TableSortState | null
+  investigation: InvestigationSummary
+  selectedRow: TableRow | null
+  scrollRef: RefObject<HTMLDivElement | null>
+  onSortClick: (column: string) => void
+  onSelectRow: (row: TableRow) => void
+  onReset: () => void
+}) {
+  const rowVirtualizer = useVirtualizer({
+    count: rows.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => VIRTUAL_ROW_ESTIMATE,
+    overscan: VIRTUAL_ROW_OVERSCAN,
+    getItemKey: (index) => tableRowKey(rows[index], index),
+    measureElement: (element) => element.getBoundingClientRect().height,
+  })
+
+  useEffect(() => {
+    rowVirtualizer.measure()
+  }, [columns, rows, rowVirtualizer])
+
+  const virtualRows = rowVirtualizer.getVirtualItems()
+  const paddingTop = virtualRows.length > 0 ? virtualRows[0].start : 0
+  const paddingBottom = virtualRows.length > 0 ? rowVirtualizer.getTotalSize() - virtualRows[virtualRows.length - 1].end : 0
+
+  return (
+    <div className="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            {columns.map((column) => {
+              const isSorted = sort?.column === column
+              const direction = sort?.direction
+              const signal = investigation.columnSignalMap.get(column)
+
+              return (
+                <th key={column} aria-sort={sortAria(sort, column)}>
+                  <button
+                    type="button"
+                    className={`column-sort${isSorted ? ' active' : ''}`}
+                    onClick={() => onSortClick(column)}
+                    aria-label={`Sort by ${column}${isSorted ? ` (${direction})` : ''}`}
+                  >
+                    <span className="column-sort-copy">
+                      <span>{column}</span>
+                      <ColumnMeta signal={signal} />
+                    </span>
+                    <span className="sort-indicator" aria-hidden="true">
+                      {isSorted ? (direction === 'asc' ? '↑' : '↓') : '↕'}
+                    </span>
+                  </button>
+                </th>
+              )
+            })}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.length === 0 ? (
+            <tr>
+              <td colSpan={columns.length || 1}>
+                <div className="table-empty-state">
+                  <strong>No rows match the current filters.</strong>
+                  <span className="muted">Loosen the query, clear chips, or use /reset.</span>
+                  <button type="button" onClick={onReset}>Clear filters</button>
+                </div>
+              </td>
+            </tr>
+          ) : (
+            <>
+              {paddingTop > 0 && (
+                <tr className="virtual-spacer-row" aria-hidden="true">
+                  <td className="virtual-spacer-cell" colSpan={columns.length} style={{ height: `${paddingTop}px` }} />
+                </tr>
+              )}
+
+              {virtualRows.map((virtualRow) => {
+                const row = rows[virtualRow.index]
+                const rowSignal = investigation.rowSignalMap.get(row)
+                const suspect = Boolean(rowSignal && rowSignal.suspectScore > 0)
+                const selected = selectedRow === row
+
+                return (
+                  <tr
+                    key={virtualRow.key}
+                    ref={(node) => {
+                      if (node) rowVirtualizer.measureElement(node)
+                    }}
+                    data-index={virtualRow.index}
+                    data-row-index={virtualRow.index}
+                    className={`${suspect ? 'row-suspect' : ''}${selected ? ' row-selected' : ''}`}
+                    onClick={() => onSelectRow(row)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault()
+                        onSelectRow(row)
+                      }
+                    }}
+                    tabIndex={0}
+                    aria-selected={selected}
+                  >
+                    {columns.map((column) => (
+                      <td key={column} data-column={column} data-kind={getValueSemantic(row[column])}>
+                        <CellValue column={column} value={row[column]} />
+                      </td>
+                    ))}
+                  </tr>
+                )
+              })}
+
+              {paddingBottom > 0 && (
+                <tr className="virtual-spacer-row" aria-hidden="true">
+                  <td className="virtual-spacer-cell" colSpan={columns.length} style={{ height: `${paddingBottom}px` }} />
+                </tr>
+              )}
+            </>
+          )}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
 function App() {
   const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const tableScrollRef = useRef<HTMLDivElement | null>(null)
   const [sourceText, setSourceText] = useState('')
   const [filename, setFilename] = useState<string | undefined>()
   const [manualFormat, setManualFormat] = useState<ManualFormat>('auto')
@@ -1127,78 +1272,18 @@ function App() {
           canShowTable ? (
             <div className="output-block table-block">
               <div className={`table-shell${selectedRow ? ' detail-open' : ''}`}>
-                <div className="table-wrap">
-                  <table>
-                    <thead>
-                      <tr>
-                        {filteredTableData.columns.map((column) => {
-                          const isSorted = filteredTableData.sort?.column === column
-                          const direction = filteredTableData.sort?.direction
-                          const signal = investigation.columnSignalMap.get(column)
-
-                          return (
-                            <th key={column} aria-sort={sortAria(filteredTableData.sort, column)}>
-                              <button
-                                type="button"
-                                className={`column-sort${isSorted ? ' active' : ''}`}
-                                onClick={() => handleSortClick(column)}
-                                aria-label={`Sort by ${column}${isSorted ? ` (${direction})` : ''}`}
-                              >
-                                <span className="column-sort-copy">
-                                  <span>{column}</span>
-                                  <ColumnMeta signal={signal} />
-                                </span>
-                                <span className="sort-indicator" aria-hidden="true">
-                                  {isSorted ? (direction === 'asc' ? '↑' : '↓') : '↕'}
-                                </span>
-                              </button>
-                            </th>
-                          )
-                        })}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filteredTableData.rows.length > 0 ? (
-                        filteredTableData.rows.map((row, index) => {
-                          const rowSignal = investigation.rowSignalMap.get(row)
-                          const suspect = Boolean(rowSignal && rowSignal.suspectScore > 0)
-                          const selected = selectedRow === row
-
-                          return (
-                            <tr
-                              key={`${row._line ?? 'row'}-${index}`}
-                              className={`${suspect ? 'row-suspect' : ''}${selected ? ' row-selected' : ''}`}
-                              onClick={() => setSelectedRow(row)}
-                              onKeyDown={(event) => {
-                                if (event.key === 'Enter' || event.key === ' ') {
-                                  event.preventDefault()
-                                  setSelectedRow(row)
-                                }
-                              }}
-                              tabIndex={0}
-                              aria-selected={selected}
-                            >
-                              {filteredTableData.columns.map((column) => (
-                                <td key={column} data-kind={getValueSemantic(row[column])}>
-                                  <CellValue column={column} value={row[column]} />
-                                </td>
-                              ))}
-                            </tr>
-                          )
-                        })
-                      ) : (
-                        <tr>
-                          <td colSpan={filteredTableData.columns.length || 1}>
-                            <div className="table-empty-state">
-                              <strong>No rows match the current filters.</strong>
-                              <span className="muted">Loosen the query, clear chips, or use /reset.</span>
-                              <button type="button" onClick={resetTableControls}>Clear filters</button>
-                            </div>
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
+                <div className="table-region" ref={tableScrollRef}>
+                  <DataTable
+                    columns={filteredTableData.columns}
+                    rows={filteredTableData.rows}
+                    sort={filteredTableData.sort}
+                    investigation={investigation}
+                    selectedRow={selectedRow}
+                    scrollRef={tableScrollRef}
+                    onSortClick={handleSortClick}
+                    onSelectRow={setSelectedRow}
+                    onReset={resetTableControls}
+                  />
                 </div>
 
                 {selectedRow && (
